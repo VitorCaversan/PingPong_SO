@@ -396,6 +396,18 @@ int after_mqueue_msgs (mqueue_t *queue) {
     return 0;
 }
 
+void task_setprio (task_t *task, int prio)
+{
+    task->priority = prio;
+
+    return;
+}
+
+int task_getprio (task_t *task)
+{
+    return task->priority;
+}
+
 task_t *scheduler()
 {
     // FCFS scheduler
