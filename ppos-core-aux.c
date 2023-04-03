@@ -1,11 +1,17 @@
 #include "ppos.h"
 #include "ppos-core-globals.h"
 
+#define UNIX_MAX_PRIO           20
+#define UNIX_MIN_PRIO           -20
+#define UNIX_AGING_FACTOR       -1
 
 // ****************************************************************************
 // Coloque aqui as suas modificações, p.ex. includes, defines variáveis, 
 // estruturas e funções
 
+// STATIC FUNCTIONS ============================================================
+
+static task_t *getHighestPrioTaks(task_t *pstFirstTask);
 
 // ****************************************************************************
 
@@ -398,24 +404,65 @@ int after_mqueue_msgs (mqueue_t *queue) {
 
 void task_setprio (task_t *task, int prio)
 {
-    task->priority = prio;
+    if ((UNIX_MIN_PRIO <= prio) && (UNIX_MAX_PRIO >= prio))
+    {
+        task->iDinamPrio = prio;
+    }
 
     return;
 }
 
 int task_getprio (task_t *task)
 {
-    return task->priority;
+    return task->iDinamPrio;
 }
 
 task_t *scheduler()
 {
-    // FCFS scheduler
+    task_t *pstNextTask = readyQueue;
+
     if (NULL != readyQueue)
     {
-        return readyQueue;
+        pstNextTask = getHighestPrioTaks(readyQueue);
+        pstNextTask->iDinamPrio = pstNextTask->iStaticPrio;
+
+        task_t *pstListRunner = readyQueue;
+        task_t *pstFirstTask  = readyQueue;
+
+        // The tasks list is a circular list, so this is the way to run through it
+        do
+        {
+            if (pstListRunner != pstNextTask)
+            {
+                pstListRunner->iDinamPrio += UNIX_AGING_FACTOR;
+            }
+
+            pstListRunner = pstListRunner->next;
+        }
+        while (pstFirstTask != pstListRunner);
     }
-    return NULL;
+
+    return pstNextTask;
 }
 
+// STATIC FUNCTIONS DEFINITIONS ================================================
+
+static task_t *getHighestPrioTaks(task_t *pstFirstTask)
+{
+    task_t *pstHighestTask = pstFirstTask;
+    task_t *pstListRunner  = pstFirstTask;
+
+    do
+    {
+        if (pstListRunner->iDinamPrio < pstHighestTask->iDinamPrio)
+        {
+            pstHighestTask = pstListRunner;
+        }
+
+        pstListRunner = pstListRunner->next;
+    }
+    while (pstFirstTask != pstListRunner);
+    
+    return pstHighestTask;
+}
 
