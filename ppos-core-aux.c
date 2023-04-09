@@ -406,7 +406,7 @@ void task_setprio (task_t *task, int prio)
 {
     if ((UNIX_MIN_PRIO <= prio) && (UNIX_MAX_PRIO >= prio))
     {
-        task->iDinamPrio = prio;
+        task->iStaticPrio = prio;
     }
 
     return;
@@ -414,7 +414,14 @@ void task_setprio (task_t *task, int prio)
 
 int task_getprio (task_t *task)
 {
-    return task->iDinamPrio;
+    int iPrio = 0;
+
+    if (NULL != task)
+    {
+        iPrio = task->iStaticPrio;
+    }
+
+    return iPrio;
 }
 
 task_t *scheduler()
@@ -440,6 +447,12 @@ task_t *scheduler()
             pstListRunner = pstListRunner->next;
         }
         while (pstFirstTask != pstListRunner);
+#if 0
+        // printf("%d prio is: %d", pstNextTask->id, pstNextTask->iDinamPrio);
+
+        // char test[2] = {0};
+        // scanf("%c", test);
+#endif
     }
 
     return pstNextTask;
@@ -458,6 +471,10 @@ static task_t *getHighestPrioTaks(task_t *pstFirstTask)
         {
             pstHighestTask = pstListRunner;
         }
+
+#if 0
+        // printf("%d prio is: %d\n", pstListRunner->id, pstListRunner->iDinamPrio);
+#endif
 
         pstListRunner = pstListRunner->next;
     }
