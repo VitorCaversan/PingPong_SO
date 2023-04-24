@@ -539,10 +539,11 @@ static void tickHandler(int signum)
 
     iTaskTicksQty--;
 
-    if (0 == iTaskTicksQty)
+    if (0 >= iTaskTicksQty)
     {
         iTaskTicksQty = DEFAULT_TASK_TICKS;
-        scheduler();
+        task_yield();
+        // scheduler();
     }
 
     return;
