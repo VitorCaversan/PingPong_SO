@@ -1,24 +1,78 @@
 #include "ppos.h"
 #include "ppos-core-globals.h"
+#include <signal.h>
+#include <sys/time.h>
 
 #define UNIX_MAX_PRIO           20
 #define UNIX_MIN_PRIO           -20
 #define UNIX_AGING_FACTOR       -1
 
+#define TIMER_STARTING_SHOT_S    1
+#define TIMER_PERIOD_uS          1000
+#define DEFAULT_TASK_TICKS       20
+
+#define	SIGALRM                  14
+
 // ****************************************************************************
 // Coloque aqui as suas modificações, p.ex. includes, defines variáveis, 
 // estruturas e funções
 
-// STATIC FUNCTIONS ============================================================
+// STATIC VARIABLES DECLARATIONS ==============================================
 
+// Structure to handle interruptions fired by the timer
+static struct sigaction stAction;
+
+// Timer used as a ticks simulation
+static struct itimerval stTimer;
+
+// STATIC FUNCTIONS DECLARATIONS ==============================================
+
+/**
+ * @brief Gets the task with the highest priority in the list
+ * 
+ * @param pstFirstTask The start of the list
+ * @return task_t* Pointer to the highest priority task
+ */
 static task_t *getHighestPrioTaks(task_t *pstFirstTask);
+
+/**
+ * @brief A handler for the implemented tick system
+ * 
+ * For each 20 ticks fired, this function calls scheduler() to decide the next
+ * task to be executed
+ * 
+ * @param signum An ID for the interruption
+ */
+static void tickHandler(int signum);
 
 // ****************************************************************************
 
 
 
 void before_ppos_init () {
-    // put your customization here
+    // Interrupt handler initialization
+    stAction.sa_handler = tickHandler;
+    sigemptyset (&stAction.sa_mask) ;
+    stAction.sa_flags = 0 ;
+
+    if (sigaction(SIGALRM, &stAction, 0) < 0)
+    {
+        perror ("Sigaction error: ") ;
+        exit (1) ;
+    }
+
+    // Timer initialization
+    stTimer.it_value.tv_usec = 0;
+    stTimer.it_value.tv_sec  = TIMER_STARTING_SHOT_S;
+    stTimer.it_interval.tv_usec = TIMER_PERIOD_uS;
+    stTimer.it_interval.tv_sec  = 0;
+
+    if (setitimer(0, &stTimer, 0) < 0)
+    {
+        perror ("Setitimer error: ") ;
+        exit (1) ;
+    }
+    
 #ifdef DEBUG
     printf("\ninit - BEFORE");
 #endif
@@ -472,10 +526,6 @@ static task_t *getHighestPrioTaks(task_t *pstFirstTask)
             pstHighestTask = pstListRunner;
         }
 
-#if 0
-        // printf("%d prio is: %d\n", pstListRunner->id, pstListRunner->iDinamPrio);
-#endif
-
         pstListRunner = pstListRunner->next;
     }
     while (pstFirstTask != pstListRunner);
@@ -483,3 +533,17 @@ static task_t *getHighestPrioTaks(task_t *pstFirstTask)
     return pstHighestTask;
 }
 
+static void tickHandler(int signum)
+{
+    static int iTaskTicksQty = DEFAULT_TASK_TICKS;
+
+    iTaskTicksQty--;
+
+    if (0 == iTaskTicksQty)
+    {
+        iTaskTicksQty = DEFAULT_TASK_TICKS;
+        scheduler();
+    }
+
+    return;
+}
