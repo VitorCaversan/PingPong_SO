@@ -9,7 +9,7 @@
 
 #define TIMER_STARTING_SHOT_S    1
 #define TIMER_PERIOD_uS          1000
-#define DEFAULT_TASK_TICKS       20
+#define DEFAULT_TASK_TICKS       40
 
 #define	SIGALRM                  14
 
@@ -24,6 +24,10 @@ static struct sigaction stAction;
 
 // Timer used as a ticks simulation
 static struct itimerval stTimer;
+
+// Total system operation ticks
+static unsigned long long ullTotalTicks      = 0;
+static unsigned int       uiTaskStartingTick = 0;
 
 // STATIC FUNCTIONS DECLARATIONS ==============================================
 
@@ -45,6 +49,14 @@ static task_t *getHighestPrioTaks(task_t *pstFirstTask);
  */
 static void tickHandler(int signum);
 
+/**
+ * @brief Updates the tasks metric parameters when preempting
+ * 
+ * @param pstPreviousTask Pointer to the previous task
+ * @param pstNextTask     Pointer to the next task
+ */
+static void metricsHandler(task_t *pstPreviousTask, task_t *pstNextTask);
+
 // ****************************************************************************
 
 
@@ -62,10 +74,10 @@ void before_ppos_init () {
     }
 
     // Timer initialization
-    stTimer.it_value.tv_usec = 0;
     stTimer.it_value.tv_sec  = TIMER_STARTING_SHOT_S;
-    stTimer.it_interval.tv_usec = TIMER_PERIOD_uS;
+    stTimer.it_value.tv_usec = 0;
     stTimer.it_interval.tv_sec  = 0;
+    stTimer.it_interval.tv_usec = TIMER_PERIOD_uS;
 
     if (setitimer(0, &stTimer, 0) < 0)
     {
@@ -94,6 +106,7 @@ void before_task_create (task_t *task ) {
 
 void after_task_create (task_t *task ) {
     // put your customization here
+    task->uiExecTicks = ullTotalTicks;
 #ifdef DEBUG
     printf("\ntask_create - AFTER - [%d]", task->id);
 #endif
@@ -108,6 +121,13 @@ void before_task_exit () {
 
 void after_task_exit () {
     // put your customization here
+    taskExec->uiExecTicks = (ullTotalTicks - taskExec->uiExecTicks);
+
+    printf("Task %d exit:\n Execution time: %d ms\n Processor time: %d ms\n %d activations\n",
+           taskExec->id,
+           taskExec->uiExecTicks,
+           taskExec->uiProcessorTicks,
+           taskExec->uiActivations);
 #ifdef DEBUG
     printf("\ntask_exit - AFTER- [%d]", taskExec->id);
 #endif
@@ -115,6 +135,7 @@ void after_task_exit () {
 
 void before_task_switch ( task_t *task ) {
     // put your customization here
+    metricsHandler(taskExec, task);
 #ifdef DEBUG
     printf("\ntask_switch - BEFORE - [%d -> %d]", taskExec->id, task->id);
 #endif
@@ -501,16 +522,18 @@ task_t *scheduler()
             pstListRunner = pstListRunner->next;
         }
         while (pstFirstTask != pstListRunner);
-#if 0
-        // printf("%d prio is: %d", pstNextTask->id, pstNextTask->iDinamPrio);
-
-        // char test[2] = {0};
-        // scanf("%c", test);
-#endif
     }
 
     return pstNextTask;
 }
+
+#if 0
+unsigned int systime()
+{
+    return (unsigned int)ullTotalTicks;
+}
+#endif
+
 
 // STATIC FUNCTIONS DEFINITIONS ================================================
 
@@ -538,13 +561,28 @@ static void tickHandler(int signum)
     static int iTaskTicksQty = DEFAULT_TASK_TICKS;
 
     iTaskTicksQty--;
+    ullTotalTicks++;
 
     if (0 >= iTaskTicksQty)
     {
         iTaskTicksQty = DEFAULT_TASK_TICKS;
-        task_yield();
-        // scheduler();
+
+        if (taskExec != taskDisp)
+        {
+            task_yield();
+        }
     }
+
+    return;
+}
+
+static void metricsHandler(task_t *pstPreviousTask, task_t *pstNextTask)
+{
+    (pstPreviousTask->uiProcessorTicks) += (ullTotalTicks - uiTaskStartingTick);
+
+    (pstNextTask->uiActivations)++;
+
+    uiTaskStartingTick = ullTotalTicks;
 
     return;
 }
