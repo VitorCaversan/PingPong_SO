@@ -55,6 +55,13 @@ static void tickHandler(int signum);
  */
 static void metricsHandler(task_t *pstPreviousTask, task_t *pstNextTask);
 
+/**
+ * @brief A function that prints the information of the task being exited
+ * 
+ * It uses global variables and pointers to decide what informations from which tasks to print.
+ */
+static void printTaskInfo(void);
+
 // ****************************************************************************
 
 
@@ -119,27 +126,11 @@ void before_task_exit () {
 
 void after_task_exit () {
     // put your customization here
+
+    // Updates how many ticks the task has taken to be fully executed
     taskExec->uiExecTicks = (systemTime - taskExec->uiExecTicks);
 
-    printf("Task %d exit: Execution time: %d ms Processor time: %d ms %d activations",
-            taskExec->id,
-            taskExec->uiExecTicks,
-            taskExec->uiProcessorTicks,
-            taskExec->uiActivations);
-    
-    if (countTasks < 2)
-    {
-        printf("\nTask %d exit: Execution time: %d ms Processor time: %d ms %d activations\n",
-               taskDisp->id,
-               taskDisp->uiExecTicks,
-               taskDisp->uiProcessorTicks,
-               taskDisp->uiActivations);
-        printf("Task %d exit: Execution time: %d ms Processor time: %d ms %d activations\n",
-               taskMain->id,
-               taskMain->uiExecTicks,
-               taskMain->uiProcessorTicks,
-               taskMain->uiActivations);
-    }
+    printTaskInfo();
 
 #ifdef DEBUG
     printf("\ntask_exit - AFTER- [%d]", taskExec->id);
@@ -607,6 +598,31 @@ static void metricsHandler(task_t *pstPreviousTask, task_t *pstNextTask)
     (pstNextTask->uiActivations)++;
 
     uiTaskStartingTick = systemTime;
+
+    return;
+}
+
+static void printTaskInfo(void)
+{
+    printf("Task %d exit: Execution time: %d ms Processor time: %d ms %d activations",
+            taskExec->id,
+            taskExec->uiExecTicks,
+            taskExec->uiProcessorTicks,
+            taskExec->uiActivations);
+    
+    if (countTasks < 2)
+    {
+        printf("\nTask %d exit: Execution time: %d ms Processor time: %d ms %d activations\n",
+               taskDisp->id,
+               taskDisp->uiExecTicks,
+               taskDisp->uiProcessorTicks,
+               taskDisp->uiActivations);
+        printf("Task %d exit: Execution time: %d ms Processor time: %d ms %d activations\n",
+               taskMain->id,
+               taskMain->uiExecTicks,
+               taskMain->uiProcessorTicks,
+               taskMain->uiActivations);
+    }
 
     return;
 }
