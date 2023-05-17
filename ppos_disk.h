@@ -7,6 +7,8 @@
 #ifndef __DISK_MGR__
 #define __DISK_MGR__
 
+#include "disk.h"
+
 // estruturas de dados e rotinas de inicializacao e acesso
 // a um dispositivo de entrada/saida orientado a blocos,
 // tipicamente um disco rigido.
@@ -17,16 +19,19 @@ typedef struct
   // completar com os campos necessarios
 } disk_t ;
 
-// inicializacao do gerente de disco
-// retorna -1 em erro ou 0 em sucesso
-// numBlocks: tamanho do disco, em blocos
-// blockSize: tamanho de cada bloco do disco, em bytes
-int disk_mgr_init (int *numBlocks, int *blockSize) ;
+/**
+ * @brief Inicializacao do gerente de disco
+ * 
+ * @param numBlocks Tamanho do disco, em blocos
+ * @param blockSize Tamanho de cada bloco do disco, em bytes
+ * @return int -1 em erro ou 0 em sucesso
+ */
+extern int disk_mgr_init (int *numBlocks, int *blockSize);
 
 // leitura de um bloco, do disco para o buffer
-int disk_block_read (int block, void *buffer) ;
+extern int disk_block_read (int block, void *buffer);
 
 // escrita de um bloco, do buffer para o disco
-int disk_block_write (int block, void *buffer) ;
+extern int disk_block_write (int block, void *buffer);
 
 #endif
