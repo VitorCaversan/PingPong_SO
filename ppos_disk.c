@@ -25,10 +25,10 @@ extern int disk_mgr_init (int *numBlocks, int *blockSize)
 
 extern int disk_block_read (int block, void *buffer)
 {
-
+   disk_cmd(DISK_CMD_READ, block, buffer);
 }
 
 extern int disk_block_write (int block, void *buffer)
 {
-
+   disk_cmd(DISK_CMD_WRITE, block, buffer);
 }
