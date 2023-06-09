@@ -7,7 +7,9 @@
 #ifndef __DISK_MGR__
 #define __DISK_MGR__
 
+#include <stdlib.h>
 #include "disk.h"
+#include "ppos_data.h"
 
 // estruturas de dados e rotinas de inicializacao e acesso
 // a um dispositivo de entrada/saida orientado a blocos,
@@ -16,8 +18,75 @@
 // estrutura que representa um disco no sistema operacional
 typedef struct
 {
-  // completar com os campos necessarios
-} disk_t ;
+   // completar com os campos necessarios
+} disk_t;
+
+/**
+ * @brief Node structure for a double linked list
+ */
+typedef struct requestNode
+{
+   struct requestNode *prev;
+   struct requestNode *next;
+   
+   task_t *task;
+   unsigned int startingTime;
+} ST_RequestNode;
+
+/**
+ * @brief Header structure for the double linked list 
+ */
+typedef struct
+{
+   ST_RequestNode *firstNode;
+   ST_RequestNode *lastNode;
+} ST_RequestList;
+
+/**
+ * @brief Create a List object and returns it
+ * 
+ * @return ST_RequestList The list header
+ */
+extern ST_RequestList createList();
+
+/**
+ * @brief Adds a node anywhere in the list, given a node where it will be put in front
+ * 
+ * @param pstList         Pointer to the list
+ * @param pstPreviousNode The node where the new one will be put in front
+ * @param pstTask         The task that requested the action
+ * @param uiStartingTick  Tick for when the action was requested
+ */
+extern void addNode(ST_RequestList *pstList,
+                    ST_RequestNode *pstPreviousNode,
+                    task_t *pstTask,
+                    unsigned int uiStartingTick);
+
+/**
+ * @brief Adds a node in the end of the list
+ * 
+ * @param pstList        Pointer to the list
+ * @param pstTask        The task that requested the action
+ * @param uiStartingTick Tick for when the action was requested
+ */
+extern void addNodeInFront(ST_RequestList *pstList, task_t *pstTask, unsigned int uiStartingTick);
+
+/**
+ * @brief Adds a node in the start of the list
+ * 
+ * @param pstList        Pointer to the list
+ * @param pstTask        The task that requested the action
+ * @param uiStartingTick Tick for when the action was requested
+ */
+extern void addNodeInBack(ST_RequestList *pstList, task_t *pstTask, unsigned int uiStartingTick);
+
+/**
+ * @brief Removes a node, given it's pointer
+ * 
+ * @param pstList Pointer to the list
+ * @param pstNode Pointer to the node to be removed
+ */
+extern void removeNode(ST_RequestList *pstList, ST_RequestNode *pstNode);
 
 /**
  * @brief Inicializacao do gerente de disco

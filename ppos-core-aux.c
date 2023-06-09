@@ -69,7 +69,7 @@ static void printTaskInfo(void);
 void before_ppos_init () {
     // Interrupt handler initialization
     stAction.sa_handler = tickHandler;
-    sigemptyset (&stAction.sa_mask) ;
+    sigemptyset (&stAction.sa_mask);
     stAction.sa_flags = 0 ;
 
     if (sigaction(SIGALRM, &stAction, 0) < 0)
