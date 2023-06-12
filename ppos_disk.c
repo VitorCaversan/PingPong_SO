@@ -1,4 +1,7 @@
 #include "ppos_disk.h"
+#include "ppos-core-globals.h"
+
+static ST_RequestList *pstRequestList;
 
 /////////////////// STATIC FUNCTIONS DECLARATIONS /////////////////////
 
@@ -8,30 +11,40 @@
  * @param pstPreviousNode Pointer to it's previous node
  * @param pstNextNode     Pointer to it's next Node
  * @param pstTask         Pointer to the task that requested the action
+ * @param block           Block number where the action will be done
+ * @param buffer          Buffer where the data will be stored/read
  * @param uiStartingTick  Tick for when the action was requested
  * @return ST_RequestNode* Pointer to the new node
  */
 static ST_RequestNode *createNode(ST_RequestNode *pstPreviousNode,
                                   ST_RequestNode *pstNextNode,
-                                  task_t *pstTask,
-                                  unsigned int uiStartingTick);
+                                  task_t         *pstTask,
+                                  int            block,
+                                  int            *buffer,
+                                  char           cTaskAction,
+                                  unsigned int   uiStartingTick);
 
 //////////////// EXTERNABLE FUNCTIONS DESCRIPTIONS ///////////////
 
-extern ST_RequestList createList()
+extern void createList(ST_RequestList *pstList)
 {
    ST_RequestList newList = {0};
-   return newList;
+   *pstList = newList;
+
+   return;
 }
 
 extern void addNode(ST_RequestList *pstList,
                     ST_RequestNode *pstPreviousNode,
-                    task_t *pstTask,
-                    unsigned int uiStartingTick)
+                    task_t         *pstTask,
+                    int            block,
+                    int            *buffer,
+                    char           cTaskAction,
+                    unsigned int   uiStartingTick)
 {
    if (NULL != pstPreviousNode)
    {
-      ST_RequestNode *pstNewNode = createNode(pstPreviousNode, pstPreviousNode->next, pstTask, uiStartingTick);
+      ST_RequestNode *pstNewNode = createNode(pstPreviousNode, pstPreviousNode->next, pstTask, block, buffer, cTaskAction, uiStartingTick);
 
       if (pstPreviousNode == pstList->lastNode)
       {
@@ -40,7 +53,7 @@ extern void addNode(ST_RequestList *pstList,
    }
    else
    {
-      ST_RequestNode *pstNewNode = createNode(NULL, NULL, pstTask, uiStartingTick);
+      ST_RequestNode *pstNewNode = createNode(NULL, NULL, pstTask, block, buffer, cTaskAction, uiStartingTick);
 
       pstList->firstNode = pstNewNode;
       pstList->lastNode  = pstNewNode;
@@ -49,7 +62,12 @@ extern void addNode(ST_RequestList *pstList,
    return;
 }
 
-extern void addNodeInFront(ST_RequestList *pstList, task_t *pstTask, unsigned int uiStartingTick)
+extern void addNodeInFront(ST_RequestList *pstList,
+                           task_t         *pstTask,
+                           int            block,
+                           int            *buffer,
+                           char           cTaskAction,
+                           unsigned int   uiStartingTick)
 {
    if (NULL == pstList)
    {
@@ -58,12 +76,12 @@ extern void addNodeInFront(ST_RequestList *pstList, task_t *pstTask, unsigned in
 
    if (NULL == pstList->firstNode)
    {
-      pstList->firstNode = createNode(NULL, NULL, pstTask, uiStartingTick);
+      pstList->firstNode = createNode(NULL, NULL, pstTask, block, buffer, cTaskAction, uiStartingTick);
       pstList->lastNode  = pstList->firstNode;
    }
    else
    {
-      ST_RequestNode *pstNewNode = createNode(pstList->lastNode, NULL, pstTask, uiStartingTick);
+      ST_RequestNode *pstNewNode = createNode(pstList->lastNode, NULL, pstTask, block, buffer, cTaskAction, uiStartingTick);
       pstList->lastNode->next = pstNewNode;
       pstList->lastNode       = pstNewNode;
    }
@@ -71,7 +89,12 @@ extern void addNodeInFront(ST_RequestList *pstList, task_t *pstTask, unsigned in
    return;
 }
 
-extern void addNodeInBack(ST_RequestList *pstList, task_t *pstTask, unsigned int uiStartingTick)
+extern void addNodeInBack(ST_RequestList *pstList,
+                          task_t         *pstTask,
+                          int            block,
+                          int            *buffer,
+                          char           cTaskAction,
+                          unsigned int   uiStartingTick)
 {
    if (NULL == pstList)
    {
@@ -80,12 +103,12 @@ extern void addNodeInBack(ST_RequestList *pstList, task_t *pstTask, unsigned int
 
    if (NULL == pstList->firstNode)
    {
-      pstList->firstNode = createNode(NULL, NULL, pstTask, uiStartingTick);
+      pstList->firstNode = createNode(NULL, NULL, pstTask, block, buffer, cTaskAction, uiStartingTick);
       pstList->lastNode  = pstList->firstNode;
    }
    else
    {
-      ST_RequestNode *pstNewNode = createNode(NULL, pstList->firstNode, pstTask, uiStartingTick);
+      ST_RequestNode *pstNewNode = createNode(NULL, pstList->firstNode, pstTask, block, buffer, cTaskAction, uiStartingTick);
       pstList->firstNode->prev = pstNewNode;
       pstList->firstNode       = pstNewNode;
    }
@@ -143,31 +166,43 @@ extern int disk_mgr_init (int *numBlocks, int *blockSize)
    *numBlocks = disk_cmd(DISK_CMD_DISKSIZE, 0, ucInitBuf);
    *blockSize = disk_cmd(DISK_CMD_BLOCKSIZE, 0, ucInitBuf);
 
+   createList(pstRequestList);
+
    return iInitSuccess;
 }
 
 extern int disk_block_read (int block, void *buffer)
 {
-   return 1;
+   addNodeInFront(pstRequestList, taskExec, block, buffer, DISK_CMD_READ, systemTime);
+
+   return 0;
 }
 
 extern int disk_block_write (int block, void *buffer)
 {
-   return 1;
+   addNodeInFront(pstRequestList, taskExec, block, buffer, DISK_CMD_WRITE, systemTime);
+
+   return 0;
 }
 
 ///////////////// STATIC FUNCTIONS DESCRIPTIONS /////////////////
 
 static ST_RequestNode *createNode(ST_RequestNode *pstPreviousNode,
                                   ST_RequestNode *pstNextNode,
-                                  task_t *pstTask,
-                                  unsigned int uiStartingTick)
+                                  task_t         *pstTask,
+                                  int            block,
+                                  int            *buffer,
+                                  char           cTaskAction,
+                                  unsigned int   uiStartingTick)
 {
    ST_RequestNode *pstNewNode = NULL;
    
    pstNewNode->prev         = pstPreviousNode;
    pstNewNode->next         = pstNextNode;
    pstNewNode->task         = pstTask;
+   pstNewNode->block        = block;
+   pstNewNode->buffer       = buffer;
+   pstNewNode->cTaskAction  = cTaskAction;
    pstNewNode->startingTime = uiStartingTick;
 
    return pstNewNode;
