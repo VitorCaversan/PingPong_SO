@@ -1,7 +1,11 @@
 #include "ppos_disk.h"
-#include "ppos-core-globals.h"
+
+/////////////////// STATIC VARIABLES DECLARATIONS ////////////////////
 
 static ST_RequestList *pstRequestList;
+
+static task_t stRWTask;
+static task_t *suspendedTasks;
 
 /////////////////// STATIC FUNCTIONS DECLARATIONS /////////////////////
 
@@ -24,7 +28,63 @@ static ST_RequestNode *createNode(ST_RequestNode *pstPreviousNode,
                                   char           cTaskAction,
                                   unsigned int   uiStartingTick);
 
+/**
+ * @brief Function run by the stRWTask
+ * 
+ * Verifies if there is any read/write request by any task. If so, it suspends
+ * the current task and awakens the disk manegement task.
+ * 
+ * @param arg Arguments for the function
+ */
+static void taskBodyFCFS(void *arg);
+
 //////////////// EXTERNABLE FUNCTIONS DESCRIPTIONS ///////////////
+
+// operações oferecidas pelo disco
+// #define DISK_CMD_INIT		0	// inicializacao do disco
+// #define DISK_CMD_READ		1	// leitura de bloco do disco
+// #define DISK_CMD_WRITE		2	// escrita de bloco do disco
+// #define DISK_CMD_STATUS		3	// consulta status do disco
+// #define DISK_CMD_DISKSIZE	4	// consulta tamanho do disco em blocos
+// #define DISK_CMD_BLOCKSIZE	5	// consulta tamanho de bloco em bytes
+// #define DISK_CMD_DELAYMIN	6	// consulta tempo resposta mínimo (ms)
+// #define DISK_CMD_DELAYMAX	7	// consulta tempo resposta máximo (ms)
+
+extern int disk_mgr_init (int *numBlocks, int *blockSize)
+{
+   unsigned char *ucInitBuf = malloc(sizeof(char));
+   int iInitSuccess = -1;
+
+   iInitSuccess = disk_cmd(DISK_CMD_INIT, 0, (void *)ucInitBuf);
+
+   *numBlocks = disk_cmd(DISK_CMD_DISKSIZE, 0, ucInitBuf);
+   *blockSize = disk_cmd(DISK_CMD_BLOCKSIZE, 0, ucInitBuf);
+
+   createList(pstRequestList);
+
+   task_create(&stRWTask, taskBodyFCFS, "nothing");
+   task_join(&stRWTask);
+
+   return iInitSuccess;
+}
+
+extern int disk_block_read (int block, void *buffer)
+{
+   addNodeInFront(pstRequestList, taskExec, block, buffer, DISK_CMD_READ, systemTime);
+
+   task_suspend(taskExec, &suspendedTasks);
+
+   return 0;
+}
+
+extern int disk_block_write (int block, void *buffer)
+{
+   addNodeInFront(pstRequestList, taskExec, block, buffer, DISK_CMD_WRITE, systemTime);
+
+   task_suspend(taskExec, &suspendedTasks);
+
+   return 0;
+}
 
 extern void createList(ST_RequestList *pstList)
 {
@@ -146,43 +206,15 @@ extern void removeNode(ST_RequestList *pstList, ST_RequestNode *pstNode)
 
    return;
 }
-// operações oferecidas pelo disco
-// #define DISK_CMD_INIT		0	// inicializacao do disco
-// #define DISK_CMD_READ		1	// leitura de bloco do disco
-// #define DISK_CMD_WRITE		2	// escrita de bloco do disco
-// #define DISK_CMD_STATUS		3	// consulta status do disco
-// #define DISK_CMD_DISKSIZE	4	// consulta tamanho do disco em blocos
-// #define DISK_CMD_BLOCKSIZE	5	// consulta tamanho de bloco em bytes
-// #define DISK_CMD_DELAYMIN	6	// consulta tempo resposta mínimo (ms)
-// #define DISK_CMD_DELAYMAX	7	// consulta tempo resposta máximo (ms)
 
-extern int disk_mgr_init (int *numBlocks, int *blockSize)
+extern char isEmpty(ST_RequestList *pstList)
 {
-   unsigned char *ucInitBuf = malloc(sizeof(char));
-   int iInitSuccess = -1;
-
-   iInitSuccess = disk_cmd(DISK_CMD_INIT, 0, (void *)ucInitBuf);
-
-   *numBlocks = disk_cmd(DISK_CMD_DISKSIZE, 0, ucInitBuf);
-   *blockSize = disk_cmd(DISK_CMD_BLOCKSIZE, 0, ucInitBuf);
-
-   createList(pstRequestList);
-
-   return iInitSuccess;
+   return (NULL == pstList->firstNode);
 }
 
-extern int disk_block_read (int block, void *buffer)
+extern void memActionFinished()
 {
-   addNodeInFront(pstRequestList, taskExec, block, buffer, DISK_CMD_READ, systemTime);
-
-   return 0;
-}
-
-extern int disk_block_write (int block, void *buffer)
-{
-   addNodeInFront(pstRequestList, taskExec, block, buffer, DISK_CMD_WRITE, systemTime);
-
-   return 0;
+   
 }
 
 ///////////////// STATIC FUNCTIONS DESCRIPTIONS /////////////////
@@ -206,4 +238,18 @@ static ST_RequestNode *createNode(ST_RequestNode *pstPreviousNode,
    pstNewNode->startingTime = uiStartingTick;
 
    return pstNewNode;
+}
+
+static void taskBodyFCFS(void *arg)
+{
+   while (1)
+   {
+      if (!isEmpty(pstRequestList))
+      {
+         ST_RequestNode *pstTailNode = pstRequestList->firstNode;
+
+         disk_cmd(pstTailNode->cTaskAction, pstTailNode->block, pstTailNode->buffer);
+         task_yield();
+      }
+   }
 }
