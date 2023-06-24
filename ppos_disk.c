@@ -52,7 +52,7 @@ static void taskBodyFCFS(void *arg);
 
 extern int disk_mgr_init (int *numBlocks, int *blockSize)
 {
-   unsigned char *ucInitBuf = malloc(sizeof(char));
+   unsigned char *ucInitBuf = (char *)malloc(sizeof(char));
    int iInitSuccess = -1;
 
    iInitSuccess = disk_cmd(DISK_CMD_INIT, 0, (void *)ucInitBuf);
@@ -214,7 +214,11 @@ extern char isEmpty(ST_RequestList *pstList)
 
 extern void memActionFinished()
 {
-   
+   task_resume(pstRequestList->firstNode->task);
+
+   removeNode(pstRequestList, pstRequestList->firstNode);
+
+   return;
 }
 
 ///////////////// STATIC FUNCTIONS DESCRIPTIONS /////////////////
