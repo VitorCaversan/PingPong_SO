@@ -2,9 +2,9 @@
 
 /////////////////// STATIC VARIABLES DECLARATIONS ////////////////////
 
-static ST_RequestList *pstRequestList;
+static ST_RequestList *gpstRequestList;
 
-static task_t stRWTask;
+static task_t stDiskTask;
 static task_t *suspendedTasks;
 
 /////////////////// STATIC FUNCTIONS DECLARATIONS /////////////////////
@@ -29,7 +29,7 @@ static ST_RequestNode *createNode(ST_RequestNode *pstPreviousNode,
                                   unsigned int   uiStartingTick);
 
 /**
- * @brief Function run by the stRWTask
+ * @brief Function run by the stDiskTask
  * 
  * Verifies if there is any read/write request by any task. If so, it suspends
  * the current task and awakens the disk manegement task.
@@ -52,7 +52,7 @@ static void taskBodyFCFS(void *arg);
 
 extern int disk_mgr_init (int *numBlocks, int *blockSize)
 {
-   unsigned char *ucInitBuf = (char *)malloc(sizeof(char));
+   unsigned char *ucInitBuf = malloc(sizeof(char));
    int iInitSuccess = -1;
 
    iInitSuccess = disk_cmd(DISK_CMD_INIT, 0, (void *)ucInitBuf);
@@ -60,17 +60,19 @@ extern int disk_mgr_init (int *numBlocks, int *blockSize)
    *numBlocks = disk_cmd(DISK_CMD_DISKSIZE, 0, ucInitBuf);
    *blockSize = disk_cmd(DISK_CMD_BLOCKSIZE, 0, ucInitBuf);
 
-   createList(pstRequestList);
+   gpstRequestList = createList();
 
-   task_create(&stRWTask, taskBodyFCFS, "nothing");
-   task_join(&stRWTask);
+   task_create(&stDiskTask, taskBodyFCFS, "nothing");
+   task_setprio (&stDiskTask, 0);
+
+   // printf("INIT SUCCESS\n");
 
    return iInitSuccess;
 }
 
 extern int disk_block_read (int block, void *buffer)
 {
-   addNodeInFront(pstRequestList, taskExec, block, buffer, DISK_CMD_READ, systemTime);
+   addNodeInFront(gpstRequestList, taskExec, block, buffer, DISK_CMD_READ, systemTime);
 
    task_suspend(taskExec, &suspendedTasks);
 
@@ -79,19 +81,71 @@ extern int disk_block_read (int block, void *buffer)
 
 extern int disk_block_write (int block, void *buffer)
 {
-   addNodeInFront(pstRequestList, taskExec, block, buffer, DISK_CMD_WRITE, systemTime);
+   addNodeInFront(gpstRequestList, taskExec, block, buffer, DISK_CMD_WRITE, systemTime);
 
    task_suspend(taskExec, &suspendedTasks);
 
    return 0;
 }
 
-extern void createList(ST_RequestList *pstList)
+extern void memActionFinished()
 {
-   ST_RequestList newList = {0};
-   *pstList = newList;
+   task_resume(gpstRequestList->firstNode->task);
+
+   removeNode(gpstRequestList, gpstRequestList->firstNode);
 
    return;
+}
+
+///////////////// STATIC FUNCTIONS DESCRIPTIONS /////////////////
+
+static void taskBodyFCFS(void *arg)
+{
+   while (1)
+   {
+      if (!isEmpty(gpstRequestList))
+      {
+         ST_RequestNode *pstTailNode = gpstRequestList->firstNode;
+
+         disk_cmd(pstTailNode->cTaskAction, pstTailNode->block, pstTailNode->buffer);
+         task_yield();
+      }
+   }
+}
+
+static ST_RequestNode *createNode(ST_RequestNode *pstPreviousNode,
+                                  ST_RequestNode *pstNextNode,
+                                  task_t         *pstTask,
+                                  int            block,
+                                  int            *buffer,
+                                  char           cTaskAction,
+                                  unsigned int   uiStartingTick)
+{
+   ST_RequestNode *pstNewNode = (ST_RequestNode *)malloc(sizeof(ST_RequestNode));
+   
+   pstNewNode->prev         = pstPreviousNode;
+   pstNewNode->next         = pstNextNode;
+   pstNewNode->task         = pstTask;
+   pstNewNode->block        = block;
+   pstNewNode->buffer       = buffer;
+   pstNewNode->cTaskAction  = cTaskAction;
+   pstNewNode->startingTime = uiStartingTick;
+
+   return pstNewNode;
+}
+
+//////////// DOUBLE LINKED LIST FUNCTIONS /////////////
+
+extern ST_RequestList *createList()
+{
+   // printf("LIST TO BE CREATED\n");
+   ST_RequestList *pstNewList = (ST_RequestList *)malloc(sizeof(ST_RequestList));
+   pstNewList->firstNode = NULL;
+   pstNewList->lastNode  = NULL;
+
+   // printf("LIST CREATED\n");
+
+   return pstNewList;
 }
 
 extern void addNode(ST_RequestList *pstList,
@@ -102,6 +156,7 @@ extern void addNode(ST_RequestList *pstList,
                     char           cTaskAction,
                     unsigned int   uiStartingTick)
 {
+   // printf("NODE TO BE ADDED\n");
    if (NULL != pstPreviousNode)
    {
       ST_RequestNode *pstNewNode = createNode(pstPreviousNode, pstPreviousNode->next, pstTask, block, buffer, cTaskAction, uiStartingTick);
@@ -119,6 +174,8 @@ extern void addNode(ST_RequestList *pstList,
       pstList->lastNode  = pstNewNode;
    }
 
+   // printf("NODE ADDED\n");
+
    return;
 }
 
@@ -129,6 +186,7 @@ extern void addNodeInFront(ST_RequestList *pstList,
                            char           cTaskAction,
                            unsigned int   uiStartingTick)
 {
+   // printf("NODE TO BE ADDED IN FRONT\n");
    if (NULL == pstList)
    {
       return;
@@ -146,6 +204,8 @@ extern void addNodeInFront(ST_RequestList *pstList,
       pstList->lastNode       = pstNewNode;
    }
 
+   // printf("NODE ADDED IN FRONT\n");
+
    return;
 }
 
@@ -156,6 +216,7 @@ extern void addNodeInBack(ST_RequestList *pstList,
                           char           cTaskAction,
                           unsigned int   uiStartingTick)
 {
+   // printf("NODE TO BE ADDED IN BACK\n");
    if (NULL == pstList)
    {
       return;
@@ -173,11 +234,14 @@ extern void addNodeInBack(ST_RequestList *pstList,
       pstList->firstNode       = pstNewNode;
    }
 
+   // printf("NODE ADDED IN BACK\n");
+
    return;
 }
 
 extern void removeNode(ST_RequestList *pstList, ST_RequestNode *pstNode)
 {
+   // printf("NODE TO BE REMOVED\n");
    if ((NULL == pstList) || (NULL == pstNode))
    {
       return;
@@ -204,56 +268,13 @@ extern void removeNode(ST_RequestList *pstList, ST_RequestNode *pstNode)
       pstNode->next->prev = pstNode->prev;
    }
 
+   free(pstNode);
+   // printf("NODE REMOVED\n");
+
    return;
 }
 
 extern char isEmpty(ST_RequestList *pstList)
 {
    return (NULL == pstList->firstNode);
-}
-
-extern void memActionFinished()
-{
-   task_resume(pstRequestList->firstNode->task);
-
-   removeNode(pstRequestList, pstRequestList->firstNode);
-
-   return;
-}
-
-///////////////// STATIC FUNCTIONS DESCRIPTIONS /////////////////
-
-static ST_RequestNode *createNode(ST_RequestNode *pstPreviousNode,
-                                  ST_RequestNode *pstNextNode,
-                                  task_t         *pstTask,
-                                  int            block,
-                                  int            *buffer,
-                                  char           cTaskAction,
-                                  unsigned int   uiStartingTick)
-{
-   ST_RequestNode *pstNewNode = NULL;
-   
-   pstNewNode->prev         = pstPreviousNode;
-   pstNewNode->next         = pstNextNode;
-   pstNewNode->task         = pstTask;
-   pstNewNode->block        = block;
-   pstNewNode->buffer       = buffer;
-   pstNewNode->cTaskAction  = cTaskAction;
-   pstNewNode->startingTime = uiStartingTick;
-
-   return pstNewNode;
-}
-
-static void taskBodyFCFS(void *arg)
-{
-   while (1)
-   {
-      if (!isEmpty(pstRequestList))
-      {
-         ST_RequestNode *pstTailNode = pstRequestList->firstNode;
-
-         disk_cmd(pstTailNode->cTaskAction, pstTailNode->block, pstTailNode->buffer);
-         task_yield();
-      }
-   }
 }

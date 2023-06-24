@@ -1,1 +1,3 @@
 *.exe
+settings.json
+tasks.json

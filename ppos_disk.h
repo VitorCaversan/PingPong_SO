@@ -4,14 +4,14 @@
 
 // interface do gerente de disco rígido (block device driver)
 
+#ifndef __DISK_MGR__
+#define __DISK_MGR__
+
 #include <stdlib.h>
 #include "disk.h"
 #include "ppos_data.h"
 #include "ppos-core-globals.h"
 #include "ppos.h"
-
-#ifndef __DISK_MGR__
-#define __DISK_MGR__
 
 // estruturas de dados e rotinas de inicializacao e acesso
 // a um dispositivo de entrada/saida orientado a blocos,
@@ -22,34 +22,30 @@
 // estrutura que representa um disco no sistema operacional
 typedef struct
 {
+   char init;
+   int tam;
+   int tam_block;
+   int bloco;
+   void* buffer;
+   int status;
+   task_t task;
+   // dreq_t req;
+   mutex_t mrequest;
+   mutex_t queue_mutex;
+   semaphore_t vazio;
+   semaphore_t cheio;
+   short pacotes;
+   int sched;
+
+   int tempo_init;
+   int blocos_percorridos;
+   int tempo_exec;
    // completar com os campos necessarios
-} disk_t;
-
-/**
- * @brief Node structure for a double linked list
- */
-typedef struct requestNode
-{
-   struct requestNode *prev;
-   struct requestNode *next;
-   
-   task_t *task;
-   int    block;
-   int    *buffer;
-   char   cTaskAction;
-   unsigned int startingTime;
-} ST_RequestNode;
-
-/**
- * @brief Header structure for the double linked list 
- */
-typedef struct
-{
-   ST_RequestNode *firstNode;
-   ST_RequestNode *lastNode;
-} ST_RequestList;
+} disk_t ;
 
 ////////////// EXTERNABLE VARIABLES ////////////////
+
+disk_t disk;
 
 ////////////// FUNCTIONS DEFINITIONS ///////////////
 
@@ -71,9 +67,9 @@ extern int disk_block_write (int block, void *buffer);
 /**
  * @brief Create a List object and returns it
  * 
- * @return ST_RequestList The list header
+ * @return NULL
  */
-extern void createList(ST_RequestList *pstList);
+extern ST_RequestList *createList();
 
 /**
  * @brief Adds a node anywhere in the list, given a node where it will be put in front

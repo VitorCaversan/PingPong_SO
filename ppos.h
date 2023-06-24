@@ -2,12 +2,13 @@
 // Prof. Carlos A. Maziero, DINF UFPR
 // Versão 1.2 -- Outubro de 2016
 
-#include <stdio.h>
-#include <stdlib.h>
 
 // Interface do núcleo para as aplicações
 #ifndef __PPOS__
 #define __PPOS__
+
+#include <stdio.h>
+#include <stdlib.h>
 
 // macros importantes ==========================================================
 
