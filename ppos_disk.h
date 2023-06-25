@@ -7,11 +7,18 @@
 #ifndef __DISK_MGR__
 #define __DISK_MGR__
 
+#include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
+#include <sys/time.h>
+#include <math.h>
 #include "disk.h"
-#include "ppos_data.h"
-#include "ppos-core-globals.h"
 #include "ppos.h"
+#include "ppos-core-globals.h"
+
+#define DISK_FCFS 0
+#define DISK_SSTF 1
+#define DISK_CSCAN 2
 
 // estruturas de dados e rotinas de inicializacao e acesso
 // a um dispositivo de entrada/saida orientado a blocos,
@@ -19,7 +26,23 @@
 
 //////////// DEFINES AND STRUCTURES /////////////
 
-// estrutura que representa um disco no sistema operacional
+/**
+ * @brief Enum for all the possible management algorithms
+ * 
+ * FCFS:  First Come, First Served
+ * SSTF:  Shortest Seek Time First
+ * CSCAN: Circular SCAN
+ */
+typedef enum
+{
+   FCFS = 0,
+   SSTF,
+   CSCAN
+} EN_DiskAlgorithm;
+
+/**
+ * @brief Struct that represents a disk in the virtual OS 
+ */
 typedef struct
 {
    char init;
@@ -29,23 +52,20 @@ typedef struct
    void* buffer;
    int status;
    task_t task;
-   // dreq_t req;
    mutex_t mrequest;
    mutex_t queue_mutex;
    semaphore_t vazio;
    semaphore_t cheio;
    short pacotes;
-   int sched;
+   EN_DiskAlgorithm enAlgorithm;
 
    int tempo_init;
    int blocos_percorridos;
    int tempo_exec;
    // completar com os campos necessarios
-} disk_t ;
+} disk_t;
 
 ////////////// EXTERNABLE VARIABLES ////////////////
-
-disk_t disk;
 
 ////////////// FUNCTIONS DEFINITIONS ///////////////
 
@@ -136,10 +156,5 @@ extern void removeNode(ST_RequestList *pstList, ST_RequestNode *pstNode);
  * @return char   1 if is empty, 0 if not
  */
 extern char isEmpty(ST_RequestList *pstList);
-
-/**
- * @brief Function called when the SIGUSR1 signal is fired
- */
-extern void memActionFinished();
 
 #endif

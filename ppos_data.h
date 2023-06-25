@@ -96,6 +96,7 @@ typedef struct requestList
 {
    ST_RequestNode *firstNode;
    ST_RequestNode *lastNode;
+   int iSize;
 } ST_RequestList;
 
 #endif

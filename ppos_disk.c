@@ -3,9 +3,10 @@
 /////////////////// STATIC VARIABLES DECLARATIONS ////////////////////
 
 static ST_RequestList *gpstRequestList;
+static disk_t         disk;
 
-static task_t stDiskTask;
-static task_t *suspendedTasks;
+static struct sigaction disk_action ;
+int disk_wait;
 
 /////////////////// STATIC FUNCTIONS DECLARATIONS /////////////////////
 
@@ -29,14 +30,12 @@ static ST_RequestNode *createNode(ST_RequestNode *pstPreviousNode,
                                   unsigned int   uiStartingTick);
 
 /**
- * @brief Function run by the stDiskTask
- * 
- * Verifies if there is any read/write request by any task. If so, it suspends
- * the current task and awakens the disk manegement task.
- * 
- * @param arg Arguments for the function
+ * @brief Function called when the SIGUSR1 signal is fired
  */
-static void taskBodyFCFS(void *arg);
+static void memActionFinished();
+
+static void diskTaskBody();
+static int disk_scheduler();
 
 //////////////// EXTERNABLE FUNCTIONS DESCRIPTIONS ///////////////
 
@@ -52,29 +51,76 @@ static void taskBodyFCFS(void *arg);
 
 extern int disk_mgr_init (int *numBlocks, int *blockSize)
 {
-   unsigned char *ucInitBuf = malloc(sizeof(char));
-   int iInitSuccess = -1;
+   if(disk_cmd(DISK_CMD_INIT, 0, 0))
+   {
+      printf("Falha ao iniciar o disco\n");
+      return -1;
+   }
 
-   iInitSuccess = disk_cmd(DISK_CMD_INIT, 0, (void *)ucInitBuf);
+   disk.tam = disk_cmd(DISK_CMD_DISKSIZE, 0, 0);
+   if(disk.tam < 0)
+   {
+      printf("Falha ao consultar o tamanho do disco\n");
+      return -1;
+   }
 
-   *numBlocks = disk_cmd(DISK_CMD_DISKSIZE, 0, ucInitBuf);
-   *blockSize = disk_cmd(DISK_CMD_BLOCKSIZE, 0, ucInitBuf);
+   disk.tam_block = disk_cmd(DISK_CMD_BLOCKSIZE, 0, 0);
+   if(disk.tam_block < 0)
+   {
+      printf("Falha ao consultar o tamanho do block\n");
+      return -1;
+   }
+
+   *numBlocks = disk.tam;
+   *blockSize = disk.tam_block;
+
+   disk.init = 1;
+   disk_wait = 0;
+   
+   mutex_create(&disk.mrequest);
+   mutex_create(&disk.queue_mutex);
+   sem_create(&disk.cheio, 0);
+   sem_create(&disk.vazio, 0);
+
+   disk.blocos_percorridos = 0;
+   disk.tempo_exec = 0;
+
+   disk.pacotes = 0;
 
    gpstRequestList = createList();
 
-   task_create(&stDiskTask, taskBodyFCFS, "nothing");
-   task_setprio (&stDiskTask, 0);
+   disk_action.sa_handler = memActionFinished;
+   sigemptyset(&disk_action.sa_mask);
+   disk_action.sa_flags = 0;
 
-   // printf("INIT SUCCESS\n");
+   if(sigaction(SIGUSR1, &disk_action, 0) < 0)
+   {
+      printf("Erro em sigaction");
+      return -1;
+   }
 
-   return iInitSuccess;
+   disk.enAlgorithm = CSCAN;
+
+   task_create(&disk.task, diskTaskBody, NULL);
+   task_setprio(&disk.task, 0);
+   
+   return 0;
 }
 
 extern int disk_block_read (int block, void *buffer)
 {
    addNodeInFront(gpstRequestList, taskExec, block, buffer, DISK_CMD_READ, systemTime);
-
-   task_suspend(taskExec, &suspendedTasks);
+   
+   mutex_lock(&disk.mrequest);
+   
+   if(disk.pacotes == 0)
+   {
+      sem_up(&disk.vazio);
+      sem_down(&disk.cheio);
+   }
+   disk.pacotes--;
+   
+   mutex_unlock(&disk.mrequest);
 
    return 0;
 }
@@ -83,34 +129,170 @@ extern int disk_block_write (int block, void *buffer)
 {
    addNodeInFront(gpstRequestList, taskExec, block, buffer, DISK_CMD_WRITE, systemTime);
 
-   task_suspend(taskExec, &suspendedTasks);
+   mutex_lock(&disk.mrequest);
+
+   if(disk.pacotes == 0) {
+      sem_up(&disk.vazio);
+      sem_down(&disk.cheio);
+   }
+   disk.pacotes = 0;
+   
+   mutex_unlock(&disk.mrequest);
 
    return 0;
 }
 
 extern void memActionFinished()
 {
-   task_resume(gpstRequestList->firstNode->task);
-
-   removeNode(gpstRequestList, gpstRequestList->firstNode);
+   disk.pacotes++;
+   sem_up(&disk.cheio);
+   disk.tempo_exec += systemTime - disk.tempo_init;
 
    return;
 }
 
+static void diskTaskBody()
+{
+   while(disk.init == 1)
+   {
+      sem_down(&disk.vazio);
+      disk_scheduler();
+   }
+
+   printf("Numero de blocos percorridos %d\nTempo de execução do disco %d ms\n", 
+   disk.blocos_percorridos, disk.tempo_exec);
+   task_exit(0);
+}
+
 ///////////////// STATIC FUNCTIONS DESCRIPTIONS /////////////////
 
-static void taskBodyFCFS(void *arg)
+ST_RequestNode* fcfs_sched()
 {
-   while (1)
-   {
-      if (!isEmpty(gpstRequestList))
-      {
-         ST_RequestNode *pstTailNode = gpstRequestList->firstNode;
+   return gpstRequestList->firstNode;
+}
 
-         disk_cmd(pstTailNode->cTaskAction, pstTailNode->block, pstTailNode->buffer);
-         task_yield();
+ST_RequestNode* sstf_sched() {
+   int iSize = gpstRequestList->iSize;
+   int i = 0;
+   ST_RequestNode* pstIter = gpstRequestList->firstNode;
+
+   int head = disk.bloco;
+   int shortest = abs(pstIter->block - head);
+   ST_RequestNode* pstShortestReq = pstIter;
+
+   int seekDist;
+   for(i=0; i < iSize && pstIter != NULL; i++, pstIter=pstIter->next)
+   {
+      seekDist = abs(pstIter->block - head);
+      if(seekDist < shortest)
+      {
+         shortest = seekDist;
+         pstShortestReq = pstIter;
       }
    }
+
+   return pstShortestReq;
+}
+
+ST_RequestNode* cscan_sched() {
+   int iSize = gpstRequestList->iSize;
+   int i     = 0;
+   ST_RequestNode *pstIter = gpstRequestList->firstNode;
+
+   int head           = disk.bloco;
+   int iShortestFront = pstIter->block - head;
+   int iShortest      = pstIter->block;
+
+   ST_RequestNode *pstShortestReq  = pstIter;
+   ST_RequestNode *pstShortestReq2 = pstIter;
+
+   int iBlockDist = 0;
+   int cIsInFront = 0;
+   for (i=0; i < iSize && pstIter != NULL; i++, pstIter=pstIter->next)
+   {
+      iBlockDist = pstIter->block - head;
+      if (iBlockDist >= 0)
+      {
+         cIsInFront = 1;
+         if (iBlockDist < iShortestFront)
+         {
+            iShortestFront = iBlockDist;
+            pstShortestReq = pstIter;
+         }
+      }
+      else
+      {
+         iBlockDist = pstIter->block;
+         if (iBlockDist < iShortest)
+         {
+            iShortest       = iBlockDist;
+            pstShortestReq2 = pstIter;
+         }
+      }
+   }
+
+   if (cIsInFront)
+   {
+      return pstShortestReq;
+   }
+   else
+   {
+      return pstShortestReq2;
+   }
+}
+
+int disk_scheduler() {
+   if(isEmpty(gpstRequestList))
+   {
+      return 0;
+   }
+
+   ST_RequestNode *req;
+   ST_RequestNode *aux;
+
+   switch(disk.enAlgorithm) {
+      case FCFS:
+      req = fcfs_sched();
+      break;
+
+      case SSTF:
+      req = sstf_sched();
+      break;
+
+      case CSCAN:
+      req = cscan_sched();
+      break;
+
+      default :
+      req = fcfs_sched();
+   }
+
+   int req_block    = req->block;
+   void *req_buffer = req->buffer;
+   int req_cmd      = req->cTaskAction;
+   
+   removeNode(gpstRequestList, req);
+   
+   disk.status = disk_cmd(DISK_CMD_STATUS, 0, 0);
+   if(disk.status != DISK_STATUS_IDLE)
+   {
+      printf("disk_status = %d\n", disk.status);
+      return -1;
+   }
+   
+   disk.tempo_init = systemTime;
+   disk.blocos_percorridos += abs(req_block - disk.bloco);
+
+   disk.bloco = req_block;
+   disk.buffer = req_buffer;
+
+   int result = disk_cmd(req_cmd, disk.bloco, disk.buffer);
+   if(result != 0) {
+      printf("Falha ao ler/escrever o bloco %d %d %p %d %d\n", disk.bloco, result, disk.buffer, disk.tam, disk.status);
+      sem_up(&disk.cheio);
+      return -1;
+   }
+
 }
 
 static ST_RequestNode *createNode(ST_RequestNode *pstPreviousNode,
@@ -142,6 +324,7 @@ extern ST_RequestList *createList()
    ST_RequestList *pstNewList = (ST_RequestList *)malloc(sizeof(ST_RequestList));
    pstNewList->firstNode = NULL;
    pstNewList->lastNode  = NULL;
+   pstNewList->iSize     = 0;
 
    // printf("LIST CREATED\n");
 
@@ -174,6 +357,8 @@ extern void addNode(ST_RequestList *pstList,
       pstList->lastNode  = pstNewNode;
    }
 
+   (pstList->iSize)++;
+
    // printf("NODE ADDED\n");
 
    return;
@@ -194,15 +379,24 @@ extern void addNodeInFront(ST_RequestList *pstList,
 
    if (NULL == pstList->firstNode)
    {
-      pstList->firstNode = createNode(NULL, NULL, pstTask, block, buffer, cTaskAction, uiStartingTick);
+      ST_RequestNode *pstNewNode = createNode(NULL, NULL, pstTask, block, buffer, cTaskAction, uiStartingTick);
+
+      mutex_lock(&disk.queue_mutex);
+      pstList->firstNode = pstNewNode;
       pstList->lastNode  = pstList->firstNode;
+      mutex_unlock(&disk.queue_mutex);
    }
    else
    {
       ST_RequestNode *pstNewNode = createNode(pstList->lastNode, NULL, pstTask, block, buffer, cTaskAction, uiStartingTick);
+      
+      mutex_lock(&disk.queue_mutex);
       pstList->lastNode->next = pstNewNode;
       pstList->lastNode       = pstNewNode;
+      mutex_unlock(&disk.queue_mutex);
    }
+
+   (pstList->iSize)++;
 
    // printf("NODE ADDED IN FRONT\n");
 
@@ -233,6 +427,8 @@ extern void addNodeInBack(ST_RequestList *pstList,
       pstList->firstNode->prev = pstNewNode;
       pstList->firstNode       = pstNewNode;
    }
+
+   (pstList->iSize)++;
 
    // printf("NODE ADDED IN BACK\n");
 
@@ -269,6 +465,7 @@ extern void removeNode(ST_RequestList *pstList, ST_RequestNode *pstNode)
    }
 
    free(pstNode);
+   (pstList->iSize)--;
    // printf("NODE REMOVED\n");
 
    return;

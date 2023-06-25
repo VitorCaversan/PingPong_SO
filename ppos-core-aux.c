@@ -1,6 +1,5 @@
 #include "ppos.h"
 #include "ppos-core-globals.h"
-#include "ppos_disk.h"
 #include <signal.h>
 #include <sys/time.h>
 
@@ -22,8 +21,6 @@
 
 // Structure to handle interruptions fired by the timer
 static struct sigaction stAction;
-// Handles signal fired by the mem task
-static struct sigaction stMemAction;
 
 // Timer used as a ticks simulation
 static struct itimerval stTimer;
@@ -65,13 +62,6 @@ static void metricsHandler(task_t *pstPreviousTask, task_t *pstNextTask);
  */
 static void printTaskInfo(void);
 
-/**
- * @brief Handles the SIGUSR1 signal fired by the mem task
- * 
- * @param signum An ID for the signal
- */
-static void memActionHandler(int signum);
-
 // ****************************************************************************
 
 
@@ -97,17 +87,6 @@ void before_ppos_init () {
     if (setitimer(0, &stTimer, 0) < 0)
     {
         perror ("Setitimer error: ") ;
-        exit (1) ;
-    }
-
-    // Interrupt handler initialization
-    stMemAction.sa_handler = tickHandler;
-    sigemptyset (&stMemAction.sa_mask);
-    stMemAction.sa_flags = 0 ;
-
-    if (sigaction(SIGUSR1, &stAction, 0) < 0)
-    {
-        perror ("Sigaction error: ") ;
         exit (1) ;
     }
     
@@ -644,13 +623,6 @@ static void printTaskInfo(void)
                taskMain->uiProcessorTicks,
                taskMain->uiActivations);
     }
-
-    return;
-}
-
-static void memActionHandler(int signum)
-{
-    memActionFinished();
 
     return;
 }
