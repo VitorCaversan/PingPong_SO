@@ -45,25 +45,50 @@ typedef enum
  */
 typedef struct
 {
-   char init;
-   int tam;
-   int tam_block;
-   int bloco;
+   char  init;
+   int   size;
+   int   iBlockSize;
+   int   iCurrBlock;
    void* buffer;
-   int status;
+   int   status;
+
    task_t task;
-   mutex_t mrequest;
-   mutex_t queue_mutex;
-   semaphore_t vazio;
-   semaphore_t cheio;
+   mutex_t mRequest;
+   mutex_t queueMutex;
+   semaphore_t emptySem;
+   semaphore_t fullSem;
    short pacotes;
    EN_DiskAlgorithm enAlgorithm;
 
-   int tempo_init;
-   int blocos_percorridos;
-   int tempo_exec;
-   // completar com os campos necessarios
+   int startingTime;
+   int totalBlockAccess;
+   int execTime;
 } disk_t;
+
+/**
+ * @brief Node structure for a double linked list
+ */
+typedef struct requestNode
+{
+   struct requestNode *prev;
+   struct requestNode *next;
+   
+   task_t *task;
+   int    block;
+   int    *buffer;
+   char   cTaskAction;
+   unsigned int startingTime;
+} ST_RequestNode;
+
+/**
+ * @brief Header structure for the double linked list 
+ */
+typedef struct requestList
+{
+   ST_RequestNode *firstNode;
+   ST_RequestNode *lastNode;
+   int iSize;
+} ST_RequestList;
 
 ////////////// EXTERNABLE VARIABLES ////////////////
 
@@ -121,7 +146,7 @@ extern void addNode(ST_RequestList *pstList,
 extern void addNodeInFront(ST_RequestList *pstList,
                            task_t         *pstTask,
                            int            block,
-                           int            *buffer,
+                           void           *buffer,
                            char           cTaskAction,
                            unsigned int   uiStartingTick);
 

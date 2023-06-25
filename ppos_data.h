@@ -74,30 +74,5 @@ typedef struct {
     unsigned char active;
 } mqueue_t ;
 
-/**
- * @brief Node structure for a double linked list
- */
-typedef struct requestNode
-{
-   struct requestNode *prev;
-   struct requestNode *next;
-   
-   task_t *task;
-   int    block;
-   int    *buffer;
-   char   cTaskAction;
-   unsigned int startingTime;
-} ST_RequestNode;
-
-/**
- * @brief Header structure for the double linked list 
- */
-typedef struct requestList
-{
-   ST_RequestNode *firstNode;
-   ST_RequestNode *lastNode;
-   int iSize;
-} ST_RequestList;
-
 #endif
 
