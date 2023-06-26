@@ -108,8 +108,6 @@ extern int disk_mgr_init(int *numBlocks, int *blockSize)
       return -1;
    }
 
-   disk.enAlgorithm = FCFS;
-
    task_create(&disk.task, diskTaskBody, NULL);
    task_setprio(&disk.task, 0);
 
@@ -268,7 +266,7 @@ static int diskScheduler()
    }
 
    ST_RequestNode *pstNextReq;
-
+   disk.enAlgorithm = SSTF;
    switch (disk.enAlgorithm)
    {
    case FCFS:
