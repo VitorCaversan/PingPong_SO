@@ -77,7 +77,7 @@ int main (int argc, char *argv[])
 
   // encerra a thread main
   printf ("%5d ms: main fim\n", systime()) ;
-  // task_exit (0) ;
+  task_exit (0) ;
 
   exit(0) ;
 }

@@ -1,5 +1,6 @@
 #include "ppos.h"
 #include "ppos-core-globals.h"
+#include "ppos_disk.h"
 #include <signal.h>
 #include <sys/time.h>
 
@@ -119,9 +120,7 @@ void after_task_create(task_t *task)
 #endif
 }
 
-void before_task_exit()
-{
-    // put your customization here
+void before_task_exit () {
 #ifdef DEBUG
     printf("\ntask_exit - BEFORE - [%d]", taskExec->id);
 #endif
@@ -647,25 +646,16 @@ static void metricsHandler(task_t *pstPreviousTask, task_t *pstNextTask)
 
 static void printTaskInfo(void)
 {
-    printf("Task %d exit: Execution time: %d ms Processor time: %d ms %d activations\n",
-           taskExec->id,
-           taskExec->uiExecTicks,
-           taskExec->uiProcessorTicks,
-           taskExec->uiActivations);
-
-    if (countTasks < 2)
+    if ((countTasks < 2))
     {
-        printf("\nTask %d exit: Execution time: %d ms Processor time: %d ms %d activations\n",
-               taskDisp->id,
-               taskDisp->uiExecTicks,
-               taskDisp->uiProcessorTicks,
-               taskDisp->uiActivations);
-        printf("\nTask %d exit: Execution time: %d ms Processor time: %d ms %d activations\n",
-               taskMain->id,
-               taskMain->uiExecTicks,
-               taskMain->uiProcessorTicks,
-               taskMain->uiActivations);
+        finishDiskTask();
     }
+
+    printf("Task %d exit: Execution time: %d ms Processor time: %d ms %d activations\n",
+        taskExec->id,
+        taskExec->uiExecTicks,
+        taskExec->uiProcessorTicks,
+        taskExec->uiActivations);
 
     return;
 }

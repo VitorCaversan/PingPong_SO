@@ -175,6 +175,11 @@ extern void addNodeInBack(ST_RequestList *pstList,
 extern void removeNode(ST_RequestList *pstList, ST_RequestNode *pstNode);
 
 /**
+ * @brief Frees the entire list and ends the disk task
+ */
+extern char finishDiskTask();
+
+/**
  * @brief Returns if the list is empty
  * 
  * @param pstList Pointer to the list

@@ -6,7 +6,6 @@ static ST_RequestList *gpstRequestList;
 static disk_t disk;
 
 static struct sigaction disk_action;
-int disk_wait;
 
 /////////////////// STATIC FUNCTIONS DECLARATIONS /////////////////////
 
@@ -62,21 +61,21 @@ extern int disk_mgr_init(int *numBlocks, int *blockSize)
 {
    if (disk_cmd(DISK_CMD_INIT, 0, 0))
    {
-      printf("Falha ao iniciar o disco\n");
+      printf("Disk initialization error\n");
       return -1;
    }
 
    disk.size = disk_cmd(DISK_CMD_DISKSIZE, 0, 0);
    if (disk.size < 0)
    {
-      printf("Falha ao consultar o tamanho do disco\n");
+      printf("Disk size not found\n");
       return -1;
    }
 
    disk.iBlockSize = disk_cmd(DISK_CMD_BLOCKSIZE, 0, 0);
    if (disk.iBlockSize < 0)
    {
-      printf("Falha ao consultar o tamanho do block\n");
+      printf("Block size not found\n");
       return -1;
    }
 
@@ -84,7 +83,6 @@ extern int disk_mgr_init(int *numBlocks, int *blockSize)
    *blockSize = disk.iBlockSize;
 
    disk.init = 1;
-   disk_wait = 0;
 
    mutex_create(&disk.mRequest);
    mutex_create(&disk.queueMutex);
@@ -172,10 +170,11 @@ static void diskTaskBody()
       sem_down(&disk.emptySem);
       diskScheduler();
    }
-
-   printf("Numero de blocos percorridos %d\nTempo de execução do disco %d ms\n",
-          disk.totalBlockAccess, disk.execTime);
+   
    sem_up(&disk.fullSem);
+
+   printf("Number of accessed blocks %d\nExecution time in disk %d ms\n",
+          disk.totalBlockAccess, disk.execTime);
    task_exit(0);
 }
 
@@ -472,13 +471,44 @@ extern void removeNode(ST_RequestList *pstList, ST_RequestNode *pstNode)
    }
 
    free(pstNode);
+
    (pstList->iSize)--;
    // printf("NODE REMOVED, list size: %d\n", pstList->iSize);
 
    return;
 }
 
+extern char finishDiskTask()
+{
+   if ((NULL != gpstRequestList) && (gpstRequestList->iSize != 0))
+   {
+      ST_RequestNode *aux  = gpstRequestList->firstNode;
+      ST_RequestNode *aux2 = gpstRequestList->firstNode;
+
+      while (aux != NULL)
+      {
+         aux2 = aux->next;
+         free(aux);
+         aux = aux2;
+      }
+
+      gpstRequestList->firstNode = NULL;
+      gpstRequestList->lastNode  = NULL;
+      gpstRequestList->iSize     = 0;
+      disk.init = 0;
+      sem_up(&disk.emptySem);
+
+      printf("List freed successfully\n");
+
+      return 1;
+   }
+   else
+   {
+      return 0;
+   }
+}
+
 extern char isEmpty(ST_RequestList *pstList)
 {
-   return (NULL == pstList->firstNode);
+   return ((NULL == pstList) || (NULL == pstList->firstNode));
 }

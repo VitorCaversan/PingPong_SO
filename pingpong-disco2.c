@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
 
   // encerra a thread main
   printf("main: fim\n");
-  // task_exit (0) ;
+  task_exit (0) ;
 
   exit(0);
 }
