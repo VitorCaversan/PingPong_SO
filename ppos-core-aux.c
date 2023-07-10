@@ -646,7 +646,7 @@ static void metricsHandler(task_t *pstPreviousTask, task_t *pstNextTask)
 
 static void printTaskInfo(void)
 {
-    if ((countTasks < 2))
+    if (0 == taskExec->id)
     {
         finishDiskTask();
     }

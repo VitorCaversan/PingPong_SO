@@ -86,13 +86,13 @@ extern int disk_mgr_init(int *numBlocks, int *blockSize)
 
    mutex_create(&disk.mRequest);
    mutex_create(&disk.queueMutex);
-   sem_create(&disk.fullSem, 0);
-   sem_create(&disk.emptySem, 0);
+   sem_create(&disk.treatedReqSem, 0);
+   sem_create(&disk.newReqsSem, 0);
 
    disk.totalBlockAccess = 0;
    disk.execTime = 0;
 
-   disk.pacotes = 0;
+   disk.packageSync = 0;
 
    gpstRequestList = createList();
 
@@ -118,15 +118,25 @@ extern int disk_block_read(int block, void *buffer)
 
    mutex_lock(&disk.mRequest);
 
-   if (disk.pacotes > 0)
-   {
-      disk.pacotes--;
-   }
-   else
-   {
-      sem_up(&disk.emptySem);
-      sem_down(&disk.fullSem);
-   }
+   // if (disk.packageSync > 0)
+   // {
+   //    disk.packageSync--;
+   // }
+   // else
+   // {
+   //    sem_up(&disk.newReqsSem);
+   //    sem_down(&disk.treatedReqSem);
+   // }
+
+   sem_up(&disk.newReqsSem);
+   sem_down(&disk.treatedReqSem);
+
+   // if (0 == disk.packageSync)
+   // {
+   //    sem_up(&disk.newReqsSem);
+   //    sem_down(&disk.treatedReqSem);
+   // }
+   // disk.packageSync--;
 
    mutex_unlock(&disk.mRequest);
 
@@ -139,15 +149,25 @@ extern int disk_block_write(int block, void *buffer)
 
    mutex_lock(&disk.mRequest);
 
-   if (disk.pacotes > 0)
-   {
-      disk.pacotes--;
-   }
-   else
-   {
-      sem_up(&disk.emptySem);
-      sem_down(&disk.fullSem);
-   }
+   // if (disk.packageSync > 0)
+   // {
+   //    disk.packageSync--;
+   // }
+   // else
+   // {
+   //    sem_up(&disk.newReqsSem);
+   //    sem_down(&disk.treatedReqSem);
+   // }
+
+   sem_up(&disk.newReqsSem);
+   sem_down(&disk.treatedReqSem);
+
+   // if (0 == disk.packageSync)
+   // {
+   //    sem_up(&disk.newReqsSem);
+   //    sem_down(&disk.treatedReqSem);
+   // }
+   // disk.packageSync = 0;
 
    mutex_unlock(&disk.mRequest);
 
@@ -156,8 +176,8 @@ extern int disk_block_write(int block, void *buffer)
 
 extern void memActionFinished()
 {
-   disk.pacotes++;
-   sem_up(&disk.fullSem);
+   disk.packageSync++;
+   sem_up(&disk.treatedReqSem);
    disk.execTime += systemTime - disk.startingTime;
 
    return;
@@ -167,12 +187,10 @@ static void diskTaskBody()
 {
    while (disk.init == 1)
    {
-      sem_down(&disk.emptySem);
+      sem_down(&disk.newReqsSem);
       diskScheduler();
    }
    
-   sem_up(&disk.fullSem);
-
    printf("Number of accessed blocks %d\nExecution time in disk %d ms\n",
           disk.totalBlockAccess, disk.execTime);
    task_exit(0);
@@ -302,7 +320,7 @@ static int diskScheduler()
    if (disk_cmd(pstNextReq->cTaskAction, disk.iCurrBlock, disk.buffer) != 0)
    {
       printf("Falha ao ler/escrever o bloco %d %p %d %d\n", disk.iCurrBlock, disk.buffer, disk.size, disk.status);
-      sem_up(&disk.fullSem);
+      sem_up(&disk.treatedReqSem);
       return -1;
    }
 
@@ -496,7 +514,7 @@ extern char finishDiskTask()
       gpstRequestList->lastNode  = NULL;
       gpstRequestList->iSize     = 0;
       disk.init = 0;
-      sem_up(&disk.emptySem);
+      sem_up(&disk.newReqsSem);
 
       printf("List freed successfully\n");
 

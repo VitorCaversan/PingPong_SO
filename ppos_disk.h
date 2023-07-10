@@ -55,9 +55,9 @@ typedef struct
    task_t task;
    mutex_t mRequest;
    mutex_t queueMutex;
-   semaphore_t emptySem;
-   semaphore_t fullSem;
-   short pacotes;
+   semaphore_t newReqsSem;
+   semaphore_t treatedReqSem;
+   short packageSync;
    EN_DiskAlgorithm enAlgorithm;
 
    int startingTime;
